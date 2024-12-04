@@ -1,37 +1,54 @@
-﻿using System.Linq;
+﻿using System;
+using System.IO;
+using System.Net.Sockets;
+using System.Text;
 
 namespace Protocolo
 {
-    public class Pedido
+    public class Protocolo
     {
-        public string Comando { get; set; }
-        public string[] Parametros { get; set; }
+        private readonly NetworkStream flujo;
 
-        public static Pedido Procesar(string mensaje)
+        public Protocolo(NetworkStream flujo)
         {
-            var partes = mensaje.Split(' ');
-            return new Pedido
+            this.flujo = flujo ?? throw new ArgumentNullException(nameof(flujo));
+        }
+
+        // Envía un pedido y espera una respuesta
+        public Respuesta ResolverPedido(Pedido pedido)
+        {
+            try
             {
-                Comando = partes[0].ToUpper(),
-                Parametros = partes.Skip(1).ToArray()
+                // Serializa el pedido y lo envía al servidor
+                string mensaje = pedido.ToString();
+                byte[] bufferTx = Encoding.UTF8.GetBytes(mensaje);
+                flujo.Write(bufferTx, 0, bufferTx.Length);
+
+                // Recibe la respuesta del servidor
+                byte[] bufferRx = new byte[1024];
+                int bytesRx = flujo.Read(bufferRx, 0, bufferRx.Length);
+                string respuestaTexto = Encoding.UTF8.GetString(bufferRx, 0, bytesRx);
+
+                // Procesa la respuesta
+                return Respuesta.Procesar(respuestaTexto);
+            }
+            catch (IOException ex)
+            {
+                throw new InvalidOperationException("Error en la comunicación: " + ex.Message, ex);
+            }
+        }
+    }
+
+    public static class Respuesta
+    {
+        public static Respuesta Procesar(string mensaje)
+        {
+            var partes = mensaje.Split(' ', 2);
+            return new Respuesta
+            {
+                Estado = partes[0],
+                Mensaje = partes.Length > 1 ? partes[1] : string.Empty
             };
         }
-
-        public override string ToString()
-        {
-            return $"{Comando} {string.Join(" ", Parametros)}";
-        }
     }
-
-    public class Respuesta
-    {
-        public string Estado { get; set; }
-        public string Mensaje { get; set; }
-
-        public override string ToString()
-        {
-            return $"{Estado} {Mensaje}";
-        }
-    }
-
 }
